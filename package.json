@@ -1,0 +1,8 @@
+{
+  "name": "weekly-dashboard",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix lp-dashboard-react run dev",
+    "build": "npm --prefix lp-dashboard-react run build"
+  }
+}
