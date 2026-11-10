@@ -1,0 +1,10 @@
+// Cloudflare Workers deploy settings: serve the built dashboard as a static site
+{
+  "name": "weekly-report",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./lp-dashboard-react/dist",
+    // one-page app: unknown paths fall back to index.html
+    "not_found_handling": "single-page-application"
+  }
+}

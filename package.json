@@ -3,6 +3,6 @@
   "private": true,
   "scripts": {
     "dev": "npm --prefix lp-dashboard-react run dev",
-    "build": "npm --prefix lp-dashboard-react run build"
+    "build": "npm --prefix lp-dashboard-react ci && npm --prefix lp-dashboard-react run build"
   }
 }
