@@ -64,7 +64,7 @@ export type Payload = {
     rows?: { date: string; channel: string; desc: string; item: string; valid: string; notes: string }[]
   }
   variance?: { error?: string; rows?: VarianceRow[] } | null
-  ccg?: { error?: string; rows?: { item: string; cost: number | null; qty: number | null; amount: number | null; reason: string }[] } | null
+  ccg?: { error?: string; rows?: { date?: string; item: string; cost: number | null; qty: number | null; amount: number | null; reason: string }[] } | null
   meta: { start?: string; end?: string; currDateRange: string; prevDateRange: string; totalRows: number; generatedAt: string }
 }
 
@@ -454,7 +454,7 @@ const channelLook = (name: string) => {
   return hit ? { ic: hit[1], c: hit[2] } : { ic: "•", c: "var(--gold)" }
 }
 
-// Complimentary is left out; every "… Bulk" area (Birthday Bulk, Festival Bulk …) becomes one Bulk card
+// Complimentary and channels with no sales this week are left out; every "… Bulk" area (Birthday Bulk, Festival Bulk …) becomes one Bulk card
 function kitchenChannels(list: KitchenPayload["channels"]) {
   const out: KitchenPayload["channels"] = []
   const bulk = { name: "Bulk", curr: 0, prev: 0 }
@@ -463,7 +463,7 @@ function kitchenChannels(list: KitchenPayload["channels"]) {
     if (/bulk/i.test(c.name)) { bulk.curr += c.curr; bulk.prev += c.prev } else out.push(c)
   })
   if (list.some((c) => /bulk/i.test(c.name))) out.push(bulk)
-  return out.sort((a, b) => b.curr - a.curr)
+  return out.filter((c) => c.curr !== 0).sort((a, b) => b.curr - a.curr) // no sales this week = no card
 }
 
 function KitchenPage({ cafes }: { cafes: Cafes }) {
@@ -556,6 +556,9 @@ function KitchenPage({ cafes }: { cafes: Cafes }) {
       {k.events?.error
         ? <div className="box"><div className="empty">Events: {k.events.error}</div></div>
         : <BulkOrders hasUnits={false} noun="event" ongoingNote="inquiry received, proposal sent …" range={k.meta.currDateRange} rows={events} sample={!k.events?.rows} sheet="event sheet" title="Event data" />}
+
+      <Sec>⚠️ Customer complaints — current week</Sec>
+      <Complaints c={k.complaints as Payload["complaints"]} range={k.meta.currDateRange} />
     </div>
   )
 }
@@ -747,7 +750,7 @@ function Dashboard({ d, lastYearCard }: { d: Payload; lastYearCard: boolean }) {
       {d.ccg && (
         <>
           <Sec>🍽️ CCG breakage</Sec>
-          <Ccg c={d.ccg} />
+          <Ccg c={d.ccg} range={m.currDateRange} />
         </>
       )}
     </>
@@ -799,24 +802,24 @@ function Variance({ v }: { v: NonNullable<Payload["variance"]> }) {
 }
 
 // Crockery, cutlery & glassware broken or missing, as listed in the cafe's CCG tab
-function Ccg({ c }: { c: NonNullable<Payload["ccg"]> }) {
+function Ccg({ c, range }: { c: NonNullable<Payload["ccg"]>; range: string }) {
   if (c.error) return <div className="box"><div className="empty">{c.error}</div></div>
   const rows = c.rows || []
   const totalQty = rows.reduce((t, r) => t + (r.qty || 0), 0), totalAmt = rows.reduce((t, r) => t + (r.amount || 0), 0)
   return (
-    <Box small={`${rows.length} item${rows.length === 1 ? "" : "s"} · ${F(totalAmt)}`} title="CCG broken / missing">
+    <Box small={`${range} · ${rows.length} entr${rows.length === 1 ? "y" : "ies"} · ${F(totalAmt)}`} title="CCG broken / missing">
       <div className="scroll">
         <table className="ccg">
-          <thead><tr><th className="l">CCG name</th><th>Qty</th><th>Amount per pcs</th><th>Total amount</th><th className="l">Reason</th></tr></thead>
+          <thead><tr><th className="l">Date</th><th className="l">CCG name</th><th>Qty</th><th>Amount per pcs</th><th>Total amount</th><th className="l">Reason</th></tr></thead>
           <tbody>
             {rows.length ? rows.map((r, i) => (
               <tr key={i}>
-                <td className="l">{r.item}</td><td>{qty(r.qty)}</td><td>{r.cost === null ? "—" : F(r.cost)}</td>
+                <td className="l">{r.date || "—"}</td><td className="l">{r.item}</td><td>{qty(r.qty)}</td><td>{r.cost === null ? "—" : F(r.cost)}</td>
                 <td><b>{r.amount === null ? "—" : F(r.amount)}</b></td><td className="l"><div className="clip">{r.reason || "—"}</div></td>
               </tr>
-            )) : <tr><td className="empty" colSpan={5}>No CCG breakage recorded</td></tr>}
+            )) : <tr><td className="empty" colSpan={6}>No CCG breakage in these dates</td></tr>}
             {rows.length > 0 && (
-              <tr className="tot"><td>Total</td><td>{qty(totalQty)}</td><td /><td>{F(totalAmt)}</td><td /></tr>
+              <tr className="tot"><td>Total</td><td /><td>{qty(totalQty)}</td><td /><td>{F(totalAmt)}</td><td /></tr>
             )}
           </tbody>
         </table>

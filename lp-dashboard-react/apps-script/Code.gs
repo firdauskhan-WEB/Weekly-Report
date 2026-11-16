@@ -41,8 +41,10 @@
    varianceTab: the stock variance tab (Department, Item, UOM, Opening, Purchase, Sale,
      System Generated Closing, Closing Given By Team, Difference, Reasons) in salesSheetId.
      Leave it out to hide the Stock variance section.
-   ccgTab: the CCG breakage tab (Item Name, Cost Per Pcs, Breakage, Breakage Amount, Reasons)
-     in salesSheetId. Leave it out to hide the CCG section.
+   ccgTab: the CCG breakage tab (Date, CCG Name, Qty, Amount, Reasons, Outlet). Only rows dated
+     inside the chosen range and, when "outlet" is set, rows of that Outlet are shown.
+     It is looked for in ccgSheetId if set, else currentYearSheetId, else salesSheetId.
+     Leave ccgTab out to hide the CCG section.
    lookerTab: where Load and "Functions > Extract Financial Data" write, for Looker Studio
      (always in salesSheetId). */
 var CAFES = {
@@ -55,7 +57,8 @@ var CAFES = {
     complaintsSheetId: "1Zrl9jv1rmoNMufbkj9DX_M6-kEnmGOMuOYaYw4U26kU",
     complaintsTab: "LP Cafe Log",
     varianceTab: "Variance",
-    ccgTab: "CCG"
+    ccgTab: "CCG Breakage",
+    outlet: "Lower Parel"
   },
   bandra: {
     salesSheetId: "1FFKqXxUTASMMXxX-MAbOxs27t4ESQCupK5xjSjsf0CE", // Cafe Weekly Report (last year + Looker studio)
@@ -66,7 +69,8 @@ var CAFES = {
     complaintsSheetId: "1Zrl9jv1rmoNMufbkj9DX_M6-kEnmGOMuOYaYw4U26kU",
     complaintsTab: "PV Cafe Log",
     varianceTab: "Variance",
-    ccgTab: "CCG"
+    ccgTab: "CCG Breakage",
+    outlet: "Pali Village"
   }
 };
 
@@ -82,7 +86,9 @@ var KITCHEN = {
   bulkSheetId: "1y7PuXvD1Fun_gy-up6g00pgYKEkgo4WHlfGJ7qkRyL4",                   // ⚠️ "Bulk"
   bulkTab: "Bulk Orders",
   eventSheetId: "1ngU82tC0K5YVhoo8idjdiL6NN4DxysGXBV4Fyl8yRNk",                 // ⚠️ "Event"
-  eventTab: "Event Orders"
+  eventTab: "Event Orders",
+  complaintsSheetId: "1Zrl9jv1rmoNMufbkj9DX_M6-kEnmGOMuOYaYw4U26kU", // same complaints spreadsheet as the cafes
+  complaintsTab: "CK Log"
 };
 
 var CONFIG = {
@@ -407,7 +413,7 @@ function buildPayload_(cfg, curr, prev, ly, w) {
     editSpotlight: buildEditSpotlight_(curr, prev),
     complaints: buildComplaintsData_(cfg, w.curr.start, w.curr.end),
     variance: buildVarianceData_(cfg),
-    ccg: buildCcgData_(cfg),
+    ccg: buildCcgData_(cfg, w.curr.start, w.curr.end),
     meta: {
       start: ymd_(w.curr.start), end: ymd_(w.curr.end),
       currDateRange: label_(w.curr), prevDateRange: label_(w.prev),
@@ -650,9 +656,11 @@ function buildVarianceData_(cfg) {
   }
 }
 
-/* ── CCG breakage (a tab in the cafe's own spreadsheet; a snapshot, not filtered by date) ── */
+/* ── CCG breakage (filtered to the chosen dates and this cafe's Outlet) ── */
 
 var CCG_FIELDS = {
+  date:   ["Date"],
+  outlet: ["Outlet"],
   item:   ["Item Name", "CCG Name", "Item"],
   cost:   ["Cost Per Pcs", "Cost Per Piece", "Amount Per Pcs"],
   qty:    ["Breakage", "Qty", "Quantity"],
@@ -660,10 +668,10 @@ var CCG_FIELDS = {
   reason: ["Reasons", "Reason"]
 };
 
-function buildCcgData_(cfg) {
+function buildCcgData_(cfg, start, end) {
   if (!cfg.ccgTab) return null;
   try {
-    var sheet = findSheet_(SpreadsheetApp.openById(cfg.salesSheetId), cfg.ccgTab);
+    var sheet = findSheet_(SpreadsheetApp.openById(cfg.ccgSheetId || cfg.currentYearSheetId || cfg.salesSheetId), cfg.ccgTab);
     if (!sheet) return { error: "Tab '" + cfg.ccgTab + "' not found for cafe '" + cfg.id + "'. Check ccgTab in CAFES at the top of Code.gs." };
     var data = sheet.getDataRange().getValues();
 
@@ -673,7 +681,7 @@ function buildCcgData_(cfg) {
       var found = data[h].map(norm_);
       if (CCG_FIELDS.item.some(function(n) { return found.indexOf(norm_(n)) >= 0; })) headerRow = h;
     }
-    if (headerRow < 0) return { error: "No header row with 'Item Name' in the top 30 rows of " + cfg.ccgTab };
+    if (headerRow < 0) return { error: "No header row with 'CCG Name' in the top 30 rows of " + cfg.ccgTab };
 
     var names = data[headerRow].map(norm_), col = {};
     Object.keys(CCG_FIELDS).forEach(function(f) {
@@ -690,9 +698,17 @@ function buildCcgData_(cfg) {
     for (var r = headerRow + 1; r < data.length; r++) {
       var row = data[r], item = col.item >= 0 ? String(row[col.item] || "").trim() : "";
       if (!item) continue;
+      // only this cafe's outlet, and only dates inside the chosen range (when the tab has those columns)
+      if (cfg.outlet && col.outlet >= 0 && norm_(row[col.outlet]) !== norm_(cfg.outlet)) continue;
+      var d = col.date >= 0 ? parseDate_(row[col.date]) : null;
+      if (col.date >= 0 && (!d || d < start || d > end)) continue;
       var cost = num(row, col.cost), qty = num(row, col.qty), amount = num(row, col.amount);
       if (amount === null && cost !== null && qty !== null) amount = cost * qty; // blank total = cost × qty
-      rows.push({ item: item, cost: cost, qty: qty, amount: amount, reason: col.reason >= 0 ? String(row[col.reason] || "").trim() : "" });
+      if (cost === null && amount !== null && qty) cost = amount / qty;          // no per-piece column: amount ÷ qty
+      rows.push({
+        date: d ? Utilities.formatDate(d, Session.getScriptTimeZone(), "d MMM") : "",
+        item: item, cost: cost, qty: qty, amount: amount, reason: col.reason >= 0 ? String(row[col.reason] || "").trim() : ""
+      });
     }
     return { rows: rows };
   } catch (err) {
@@ -861,6 +877,7 @@ function buildKitchenPayload_(curr, prev, ly, w) {
     top: top,
     bulk: readEnquiries_(KITCHEN.bulkSheetId, KITCHEN.bulkTab, w.curr),
     events: readEnquiries_(KITCHEN.eventSheetId, KITCHEN.eventTab, w.curr),
+    complaints: buildComplaintsData_(KITCHEN, w.curr.start, w.curr.end),
     meta: {
       start: ymd_(w.curr.start), end: ymd_(w.curr.end),
       currDateRange: label_(w.curr), prevDateRange: label_(w.prev),
