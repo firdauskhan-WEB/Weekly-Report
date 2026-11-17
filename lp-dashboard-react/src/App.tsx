@@ -65,6 +65,7 @@ export type Payload = {
   }
   variance?: { error?: string; rows?: VarianceRow[] } | null
   ccg?: { error?: string; rows?: { date?: string; item: string; cost: number | null; qty: number | null; amount: number | null; reason: string }[] } | null
+  wastage?: { error?: string; rows?: { date: string; item: string; qty: number | null; unit: string; desc: string }[] } | null
   meta: { start?: string; end?: string; currDateRange: string; prevDateRange: string; totalRows: number; generatedAt: string }
 }
 
@@ -753,6 +754,13 @@ function Dashboard({ d, lastYearCard }: { d: Payload; lastYearCard: boolean }) {
           <Ccg c={d.ccg} range={m.currDateRange} />
         </>
       )}
+
+      {d.wastage && (
+        <>
+          <Sec>🗑️ Wastage</Sec>
+          <Wastage w={d.wastage} range={m.currDateRange} />
+        </>
+      )}
     </>
   )
 }
@@ -821,6 +829,29 @@ function Ccg({ c, range }: { c: NonNullable<Payload["ccg"]>; range: string }) {
             {rows.length > 0 && (
               <tr className="tot"><td>Total</td><td /><td>{qty(totalQty)}</td><td /><td>{F(totalAmt)}</td><td /></tr>
             )}
+          </tbody>
+        </table>
+      </div>
+    </Box>
+  )
+}
+
+// Raw material wasted, as listed in the cafe's Wastage tab
+function Wastage({ w, range }: { w: NonNullable<Payload["wastage"]>; range: string }) {
+  if (w.error) return <div className="box"><div className="empty">{w.error}</div></div>
+  const rows = w.rows || []
+  return (
+    <Box small={`${range} · ${rows.length} entr${rows.length === 1 ? "y" : "ies"}`} title="Wastage">
+      <div className="scroll">
+        <table className="ccg">
+          <thead><tr><th className="l">Date</th><th className="l">Raw material</th><th>Qty</th><th className="l">Unit</th><th className="l">Description</th></tr></thead>
+          <tbody>
+            {rows.length ? rows.map((r, i) => (
+              <tr key={i}>
+                <td className="l">{r.date}</td><td className="l">{r.item}</td><td>{qty(r.qty)}</td><td className="l">{r.unit}</td>
+                <td className="l"><div className="clip">{r.desc || "—"}</div></td>
+              </tr>
+            )) : <tr><td className="empty" colSpan={5}>No wastage in these dates</td></tr>}
           </tbody>
         </table>
       </div>

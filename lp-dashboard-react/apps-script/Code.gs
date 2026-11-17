@@ -70,6 +70,7 @@ var CAFES = {
     complaintsTab: "PV Cafe Log",
     varianceTab: "Variance",
     ccgTab: "CCG Breakage",
+    wastageTab: "Wastage",
     outlet: "Pali Village"
   }
 };
@@ -414,6 +415,7 @@ function buildPayload_(cfg, curr, prev, ly, w) {
     complaints: buildComplaintsData_(cfg, w.curr.start, w.curr.end),
     variance: buildVarianceData_(cfg),
     ccg: buildCcgData_(cfg, w.curr.start, w.curr.end),
+    wastage: buildWastageData_(cfg, w.curr.start, w.curr.end),
     meta: {
       start: ymd_(w.curr.start), end: ymd_(w.curr.end),
       currDateRange: label_(w.curr), prevDateRange: label_(w.prev),
@@ -710,6 +712,49 @@ function buildCcgData_(cfg, start, end) {
         item: item, cost: cost, qty: qty, amount: amount, reason: col.reason >= 0 ? String(row[col.reason] || "").trim() : ""
       });
     }
+    return { rows: rows };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+/* ── Wastage (a tab in salesSheetId; rows dated inside the chosen range) ── */
+
+var WASTAGE_FIELDS = {
+  date: ["Date"],
+  item: ["Raw Material"],
+  qty:  ["Quantity", "Qty"],
+  unit: ["Unit"],
+  desc: ["Description"]
+};
+
+function buildWastageData_(cfg, start, end) {
+  if (!cfg.wastageTab) return null;
+  try {
+    var sheet = findSheet_(SpreadsheetApp.openById(cfg.salesSheetId), cfg.wastageTab);
+    if (!sheet) return { error: "Tab '" + cfg.wastageTab + "' not found for cafe '" + cfg.id + "'. Check wastageTab in CAFES at the top of Code.gs." };
+    var data = sheet.getDataRange().getValues();
+    var headerRow = -1;
+    for (var h = 0; h < Math.min(10, data.length) && headerRow < 0; h++) {
+      if (data[h].map(norm_).indexOf("rawmaterial") >= 0) headerRow = h;
+    }
+    if (headerRow < 0) return { error: "No header row with 'Raw Material' in the top 10 rows of " + cfg.wastageTab };
+    var col = mapHeaders_(data[headerRow], cfg.wastageTab, WASTAGE_FIELDS, ["date", "item"]);
+    var rows = [];
+    for (var r = headerRow + 1; r < data.length; r++) {
+      var row = data[r], item = String(row[col.item] || "").trim(), d = parseDate_(row[col.date]);
+      if (!item || !d || d < start || d > end) continue;
+      var q = col.qty >= 0 && row[col.qty] !== "" ? Number(row[col.qty]) : null;
+      rows.push({
+        sort: d.getTime(),
+        date: Utilities.formatDate(d, Session.getScriptTimeZone(), "d MMM"),
+        item: item, qty: q === null || isNaN(q) ? null : q,
+        unit: col.unit >= 0 ? String(row[col.unit] || "").trim() : "",
+        desc: col.desc >= 0 ? String(row[col.desc] || "").trim() : ""
+      });
+    }
+    rows.sort(function(a, b) { return b.sort - a.sort; }); // newest first
+    rows.forEach(function(x) { delete x.sort; });
     return { rows: rows };
   } catch (err) {
     return { error: err.message };
