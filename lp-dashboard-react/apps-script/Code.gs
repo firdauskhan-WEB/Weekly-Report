@@ -88,6 +88,8 @@ var KITCHEN = {
   bulkTab: "Bulk Orders",
   eventSheetId: "1ngU82tC0K5YVhoo8idjdiL6NN4DxysGXBV4Fyl8yRNk",                 // ⚠️ "Event"
   eventTab: "Event Orders",
+  purchaseCostTab: "Purchase Cost",                     // in CK New Weekly Report: Start Date, End Date, Food Cost, Non Food Cost
+                                                        // set to "" to work food/non-food cost out from COGS instead
   complaintsSheetId: "1Zrl9jv1rmoNMufbkj9DX_M6-kEnmGOMuOYaYw4U26kU", // same complaints spreadsheet as the cafes
   complaintsTab: "CK Log"
 };
@@ -911,15 +913,17 @@ function buildKitchenPayload_(curr, prev, ly, w) {
   // COGS split: the "Others" department (add-ons such as trays, candles, bouquets) is non-food
   function isNonFood(r) { return /^others?$/i.test(r.group); }
   function cogs(rows, nonFood) { return total(rows.filter(function(r) { return r.item && isNonFood(r) === nonFood; }), "cogs"); }
+  var purchase = readPurchaseCost_(w);
 
   return {
     kpis: { curr: total(curr, "amount"), prev: total(prev, "amount"), ly: total(ly, "amount") },
     channels: compare("area", false),
     departments: departments,
     topItem: topItem,
-    foodCost: { curr: cogs(curr, false), prev: cogs(prev, false) },
-    nonFoodCost: { curr: cogs(curr, true), prev: cogs(prev, true) },
+    foodCost: purchase ? purchase.food : { curr: cogs(curr, false), prev: cogs(prev, false) },
+    nonFoodCost: purchase ? purchase.nonFood : { curr: cogs(curr, true), prev: cogs(prev, true) },
     top: top,
+    editSpotlight: buildEditSpotlight_(curr, prev), // every Edit item, for the "See all Edit items" pop-up
     bulk: readEnquiries_(KITCHEN.bulkSheetId, KITCHEN.bulkTab, w.curr),
     events: readEnquiries_(KITCHEN.eventSheetId, KITCHEN.eventTab, w.curr),
     complaints: buildComplaintsData_(KITCHEN, w.curr.start, w.curr.end),
@@ -929,6 +933,34 @@ function buildKitchenPayload_(curr, prev, ly, w) {
       generatedAt: new Date().toISOString()
     }
   };
+}
+
+// Food / non-food cost from the Purchase Cost tab: each row covers Start Date..End Date and is counted
+// in the window (current or previous) that fully contains it. null when the tab isn't set.
+var PURCHASE_FIELDS = {
+  start:   ["Start Date"],
+  end:     ["End Date"],
+  food:    ["Food Cost"],
+  nonFood: ["Non Food Cost", "Non-Food Cost"]
+};
+function readPurchaseCost_(w) {
+  if (!KITCHEN.purchaseCostTab) return null;
+  var sheet = findSheet_(SpreadsheetApp.openById(KITCHEN.lastYearSheetId), KITCHEN.purchaseCostTab);
+  if (!sheet) throw new Error("Tab '" + KITCHEN.purchaseCostTab + "' not found in CK New Weekly Report. Check purchaseCostTab in KITCHEN at the top of Code.gs.");
+  var data = sheet.getDataRange().getValues();
+  var col = mapHeaders_(data[0] || [], sheet.getName(), PURCHASE_FIELDS, ["start", "end", "food", "nonFood"]);
+  var out = { food: { curr: 0, prev: 0 }, nonFood: { curr: 0, prev: 0 } };
+  for (var r = 1; r < data.length; r++) {
+    var s = parseDate_(data[r][col.start]), e = parseDate_(data[r][col.end]);
+    if (!s || !e) continue;
+    ["curr", "prev"].forEach(function(k) {
+      if (s >= w[k].start && e <= w[k].end) {
+        out.food[k] += Number(data[r][col.food]) || 0;
+        out.nonFood[k] += Number(data[r][col.nonFood]) || 0;
+      }
+    });
+  }
+  return out;
 }
 
 // Bulk / event enquiries dated inside the range (one row per enquiry)

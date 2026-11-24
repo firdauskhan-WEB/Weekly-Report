@@ -153,6 +153,7 @@ export type KitchenPayload = {
   top: { dept: string; total: number; items: { name: string; value: number }[] }[]
   bulk?: { error?: string; rows?: BulkEnquiry[] }
   events?: { error?: string; rows?: BulkEnquiry[] }
+  editSpotlight?: unknown // same shape as a cafe's editSpotlight
   complaints?: unknown // same shape as a cafe's complaints (Payload["complaints"] in App.tsx)
   meta: { start?: string; end?: string; currDateRange: string; prevDateRange: string; generatedAt: string }
   error?: string

@@ -478,6 +478,8 @@ function KitchenPage({ cafes }: { cafes: Cafes }) {
   const share = (v: number) => (k.kpis.curr ? Math.round((v / k.kpis.curr) * 100) : 0)
   const costPct = (v: number, of: number) => (of ? ((v / of) * 100).toFixed(1) + "%" : "—")
   const t = k.topItem
+  const editDialog = useRef<HTMLDialogElement>(null)
+  const edit = k.editSpotlight as Payload["editSpotlight"] | undefined // needs the updated script
   return (
     <div className="wrap">
       <Header
@@ -547,8 +549,12 @@ function KitchenPage({ cafes }: { cafes: Cafes }) {
       <Sec>Top 5 selling items by department</Sec>
       <div className="g gt">
         {/* "Others" (add-ons) is left out; with it gone, Edit fills the fourth card */}
-        {k.top.filter((d) => !/^others?$/i.test(d.dept)).slice(0, 4).map((d) => <Top5 key={d.dept} list={d.items} name={d.dept} total={d.total} />)}
+        {k.top.filter((d) => !/^others?$/i.test(d.dept)).slice(0, 4).map((d) => (
+          <Top5 key={d.dept} list={d.items} name={d.dept} total={d.total}
+            onOpen={d.dept === "Edit" && edit ? () => editDialog.current?.showModal() : undefined} />
+        ))}
       </div>
+      {edit && <EditItems dialogRef={editDialog} e={edit} />}
 
       <Sec>Bulk orders</Sec>
       {k.bulk?.error ? <div className="box"><div className="empty">Bulk orders: {k.bulk.error}</div></div> : <BulkOrders range={k.meta.currDateRange} rows={bulk} sample={!k.bulk?.rows} />}
@@ -719,7 +725,7 @@ function Dashboard({ d, lastYearCard }: { d: Payload; lastYearCard: boolean }) {
       </div>
 
       <div className="g g2">
-        <Box title="🚀 Order channels"><Donut label="Channels" list={d.channels.map((c) => ({ name: c.name, value: c.curr }))} /></Box>
+        <Box title="🚀 Order channels"><Donut label="Channels" list={d.channels.map((c) => ({ name: /delivery|parcel/i.test(c.name) ? "Aggregator" : c.name, value: c.curr }))} /></Box>
         <Box title="Sales by sub-category" small="current vs previous">
           <Bars
             data={sc.map((s) => ({ name: s.name, Current: s.curr, Previous: s.prev }))}
