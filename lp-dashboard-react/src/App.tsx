@@ -149,11 +149,12 @@ function Top5({ name, list, total, onOpen }: { name: string; list: NV[]; total: 
 // Opened and closed straight on the <dialog> (no React state), so it always reopens.
 function EditItems({ e, dialogRef }: { e: Payload["editSpotlight"]; dialogRef: React.RefObject<HTMLDialogElement | null> }) {
   const close = () => dialogRef.current?.close()
-  const emx = Math.max(1, ...e.items.map((i) => i.curr))
+  const items = e.items.filter((i) => i.currQty || i.curr) // only items sold in the current dates
+  const emx = Math.max(1, ...items.map((i) => i.curr))
   return (
     <dialog className="modal" onClick={(ev) => ev.target === dialogRef.current && close()} ref={dialogRef}>
       <div className="modal-head">
-        <h2>✨ All Edit items<small>this week vs previous · {e.items.length} items</small></h2>
+        <h2>✨ All Edit items<small>this week vs previous · {items.length} items</small></h2>
         <button aria-label="Close" onClick={close} type="button">✕</button>
       </div>
       {/* orders = orders containing at least one Edit item (needs the updated script) */}
@@ -171,7 +172,7 @@ function EditItems({ e, dialogRef }: { e: Payload["editSpotlight"]; dialogRef: R
             <tr><th>#</th><th className="l">Item name</th><th>Curr qty</th><th>Prev qty</th><th>Qty Δ</th><th>Curr sales</th><th>Prev sales</th><th>Sales Δ</th><th>Avg price</th><th>Bar</th></tr>
           </thead>
           <tbody>
-            {e.items.length ? e.items.map((i, n) => {
+            {items.length ? items.map((i, n) => {
               const s = i.curr - i.prev
               return (
                 <tr key={i.name}>
